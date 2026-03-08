@@ -1,6 +1,6 @@
 function [iter,rad,thermal,soil,bcu,bch,fluxes,resist_out,meteo]             ...
-    = ebal(constants,options,rad,gap,  ...
-    meteo,soil,canopy,leafbio,k,xyt,integr)
+    = ebal(constants,spectral,options,rad,gap,  ...
+    meteo,soil,canopy,leafbio,leafopt,k,xyt,integr)
 % function ebal.m calculates the energy balance of a vegetated surface
 %
 % authors:      Christiaan van der Tol (c.vandertol@utwente.nl)
@@ -170,7 +170,10 @@ end
 while CONT                          % while energy balance does not close
     % 2.1. Net radiation of the components
     % Thermal radiative transfer model for vegetation emission (with Stefan-Boltzman's equation)
-    rad     = RTMt_sb(constants,rad,soil,leafbio,canopy,gap,Tcu,Tch,Ts(2),Ts(1),0);
+    
+    %rad    = RTMt_planck(spectral,rad,soil,leafopt,canopy,gap,Tcu,Tch,Ts(2),Ts(1));
+    rad     = RTMt_planck_unchanged(spectral,rad,soil,leafopt,canopy,gap,Tcu,Tch,Ts(2),Ts(1));
+    %rad    = RTMt_planckSI(spectral,rad,soil,leafopt,canopy,gap,Tcu,Tch,Ts(2),Ts(1));
     Rnhc    = rad.Rnhc + rad.Rnhct;     % Canopy (shaded) net radiation
     Rnuc    = rad.Rnuc + rad.Rnuct;     % Canopy (sunlit) net radiation
     Rnhs    = rad.Rnhs+rad.Rnhst;       % Soil   (sun+sh) net radiation
@@ -258,18 +261,32 @@ while CONT                          % while energy balance does not close
 
     % if counter>99, plot(EBercu(:)), hold on, end
     % 2.7. New estimates of soil (s) and leaf (c) temperatures, shaded (h) and sunlit (1)
-    Tch         = Tch + Wc*EBerch./((rhoa*cp)./rac + rhoa*lambdah*e_to_q.*sh./(rac+bch.rcw)+ 4*leafbio.emis*sigmaSB*(Tch+273.15).^3);
+    Tch         = Tch + Wc*EBerch./((rhoa*cp)./rac + rhoa*lambdah*e_to_q.*sh./(rac+bch.rcw)+ 4*leafbio.emis*sigmaSB*(Tch+273.15).^3); % Get emissiity of leaf as per radiation instead of from just rho and tau values
     Tcu         = Tcu + Wc*EBercu./((rhoa*cp)./rac + rhoa*lambdau*e_to_q.*su./(rac+bcu.rcw)+ 4*leafbio.emis*sigmaSB*(Tcu+273.15).^3);
     Ts          = Ts + Wc*EBers./(rhoa*cp./ras + rhoa*lambdas*e_to_q.*ss/(ras+rss)+ 4*(1-soil.rs_thermal)*sigmaSB*(Ts+273.15).^3 + dG);
     Tch(abs(Tch)>100) = Ta;
     Tcu(abs(Tcu)>100) = Ta;
+    
 end
 
 %% 2.2 emmissivity calculation
-rad     = RTMt_sb(constants,rad,soil,leafbio,canopy,gap,Tcu,Tch,Ts(2),Ts(1),0);
+%rad     = RTMt_planck(spectral,rad,soil,leafopt,canopy,gap,Tcu,Tch,Ts(2),Ts(1));
+rad     = RTMt_planck_unchanged(spectral,rad,soil,leafopt,canopy,gap,Tcu,Tch,Ts(2),Ts(1));
+%rad     = RTMt_planckSI(spectral,rad,soil,leafopt,canopy,gap,Tcu,Tch,Ts(2),Ts(1));
 [blackleaf.tau_thermal,blackleaf.rho_thermal,blacksoil.rs_thermal] = deal(0);
 rad0    = RTMt_sb(constants,rad,blacksoil,blackleaf,canopy,gap,Tcu,Tch,Ts(2),Ts(1),0);
-rad.canopyemis = rad.Eoutte./rad0.Eoutte;
+%rad0    = RTMt_sb_BB(constants,rad,blacksoil,blackleaf,canopy,gap,Tcu,Tch,Ts(2),Ts(1),0);
+%keyboard
+rad.canopyemis = rad.Eoutte./rad0.Eoutte; % High emissivity value, Look at the reason for 7x7 temp and why high value
+%keyboard
+
+%rad     = RTMt_sb(constants,rad,soil,leafbio,canopy,gap,Tcu,Tch,Ts(2),Ts(1),0);
+%[blackleaf.tau_thermal,blackleaf.rho_thermal,blacksoil.rs_thermal] = deal(0);
+%rad0    = RTMt_sb(constants,rad,blacksoil,blackleaf,canopy,gap,Tcu,Tch,Ts(2),Ts(1),0);
+%rad.canopyemis = rad.Eoutte./rad0.Eoutte;
+%directional emissivity
+rad.canopyemisdir = pi*rad.Lot./rad0.Eoutte;
+
 
 %% 3. Print warnings whenever the energy balance could not be solved
 if counter>=maxit
