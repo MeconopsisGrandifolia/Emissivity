@@ -82,13 +82,15 @@ R_sd        = rad.R_sd(:,end);
 rho_dd      = rad.rho_dd(:,end);
 tau_dd      = rad.tau_dd(:,end);
 
+
 %% 1. calculation of upward and downward fluxes pag 305
 
 %1.1 radiance by components
-Hcsu3       = epsc*Stefan_Boltzmann(Tcu,constants)%                   Radiance by sunlit leaves
-Hcsh        = epsc*Stefan_Boltzmann(Tch,constants)%                   Radiance by shaded leaves
-Hssu        = epss*Stefan_Boltzmann(Tsu,constants)%                   Radiance by sunlit soil
-Hssh        = epss*Stefan_Boltzmann(Tsh,constants)%                   Radiance by shaded soil
+%Tb_avg = mean(Tcu, 2);
+Hcsu3       = epsc*Stefan_Boltzmann(Tcu,constants);%                   Radiance by sunlit leaves
+Hcsh        = epsc*Stefan_Boltzmann(Tch,constants);%                   Radiance by shaded leaves
+Hssu        = epss*Stefan_Boltzmann(Tsu,constants);%                   Radiance by sunlit soil
+Hssh        = epss*Stefan_Boltzmann(Tsh,constants);%                   Radiance by shaded soil
 
 % 1.2 radiance by leaf layers Hv and by soil Hs (modified by JAK 2015-01)
 if size(Hcsu3,2)>1
@@ -100,7 +102,7 @@ else
 end
 Hc          = Hcsu.*Ps(1:nl) + Hcsh.*(1-Ps(1:nl));      % hemispherical emittance by leaf layers
 Hs          = Hssu.*Ps(nl+1) + Hssh.*(1-Ps(nl+1));      % hemispherical emittance by soil surface
-
+%keyboard
 % 1.3 Diffuse radiation
 [U,Es_,Emin,Eplu]           = deal(zeros(nl+1,1));       % [nl+1,nwl]     direct, up and down diff. rad.
 
@@ -119,6 +121,7 @@ for j=1:nl       % from top to bottom
 end
 Eplu(nl+1)      = R_sd(nl).*Es_(nl)+R_dd(nl).*Emin(nl)+Hs;
 Eoutte          = Eplu(1);
+
 % 1.4 Directional radiation and brightness temperature
 if obsdir
     K           = gap.K;
@@ -154,12 +157,12 @@ end
 
 Rnhc            = epsc*(Emin(1:end-1) + Eplu(2:end)) - 2*(Hcsh);
 Rnus            = epss*(Emin(nl+1) - Hssu);                       % sunlit soil
-Rnhs            = epss*(Emin(nl+1) - Hssh);                      % shaded soil
+Rnhs            = epss*(Emin(nl+1) - Hssh);                       % shaded soil
 
 %% 3. Write the output to the rad structure
 rad.Emint   = Emin;
 rad.Eplut   = Eplu;
-rad.Eoutte  = Eoutte;
+rad.Eoutte = Eoutte;
 rad.Rnuct   = Rnuc;
 rad.Rnhct   = Rnhc;
 rad.Rnust   = Rnus;
