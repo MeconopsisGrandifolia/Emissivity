@@ -1,30 +1,5 @@
 function [rad] = RTMt_planck(spectral,rad,soil,leafopt,canopy,gap,Tcu,Tch,Tsu,Tsh)
 
-% ================= DEBUG BLOCK =================
-persistent callCount
-if isempty(callCount)
-    callCount = 0;
-end
-callCount = callCount + 1;
-
-fprintf('\n===== RTMt_planckSI CALL #%d =====\n', callCount);
-% ===============================================
-fprintf('Tcu size: %s\n', mat2str(size(Tcu)));
-fprintf('Tch size: %s\n', mat2str(size(Tch)));
-fprintf('Tsu size: %s\n', mat2str(size(Tsu)));
-fprintf('Tsh size: %s\n', mat2str(size(Tsh)));
-
-if exist('spectral','var')
-    if isfield(spectral,'wl')
-        fprintf('spectral.wl size: %s\n', mat2str(size(spectral.wl)));
-    end
-end
-
-if exist('leafopt','var')
-    if isfield(leafopt,'epsc')
-        fprintf('leafopt.epsc size: %s\n', mat2str(size(leafopt.epsc)));
-    end
-end
 % function 'RTMt_sb' calculates total outgoing radiation in hemispherical
 % direction and total absorbed radiation per leaf and soil component.
 % Radiation is integrated over the whole thermal spectrum with
@@ -88,7 +63,7 @@ end
 IT          = spectral.IwlT;   %
 wlt         = spectral.wlT;
 %deg2rad     = constants.deg2rad;
-
+wl_a = 2500:1:500000;
 nl          = canopy.nlayers;
 lidf        = canopy.lidf;
 Ps          = gap.Ps;
@@ -97,18 +72,27 @@ rho         = leafopt.refl(:, IT)';    % [1]               Leaf/needle reflectio
 tau         = leafopt.tran(:, IT)';    % [1]               Leaf/needle transmission
 rs          = soil.refl(IT);        % [1]               Soil reflectance
 epsc        = 1-rho-tau;              % [nwl]               Emissivity vegetation
+epsc(46502:497501,1:7) = 0.98;
 epss        = 1-rs;                   % [nwl]               Emissivity soil
+epss(46502:497501,1) = 0.94;
 LAI         = canopy.LAI;
 dx          = 1/nl;
 iLAI        = LAI*dx;
 
 Xdd         = rad.Xdd(:,IT);
+cols = 46503:497501;
+Xdd(:,cols) = repmat(Xdd(:,46502), 1, length(cols));
 Xsd         = rad.Xsd(:,IT);
+Xsd(:,cols) = repmat(Xsd(:,46502), 1, length(cols));
 Xss         = repmat(rad.Xss,canopy.nlayers,1);
 R_dd        = rad.R_dd(:,IT);
+R_dd(:,cols) = repmat(R_dd(:,46502), 1, length(cols));
 R_sd        = rad.R_sd(:,IT);
+R_sd(:,cols) = repmat(R_sd(:,46502), 1, length(cols));
 rho_dd      = rad.rho_dd(:,IT);
+rho_dd(:,cols) = repmat(rho_dd(:,46502), 1, length(cols));
 tau_dd      = rad.tau_dd(:,IT);
+tau_dd(:,cols) = repmat(tau_dd(:,46502), 1, length(cols));
 
 %% 0.2  initialization of output variables
 [piLot_,Eoutte_]    = deal(zeros(1,length(IT))); %          [1,nwlt]
@@ -116,12 +100,16 @@ tau_dd      = rad.tau_dd(:,IT);
 
 %% 1. calculation of upward and downward fluxes pag 305
 
-for i = 1:length(IT)
+%for i = 1:length(IT)
+for i = 1:length(wl_a)
     % 1.1 radiance by components
-    Hcsu3          = pi*Planck(wlt(i),Tcu+273.15,epsc(i))
-    Hcsh           = pi*Planck(wlt(i),Tch+273.15,epsc(i))
-    Hssu           = pi*Planck(wlt(i),Tsu+273.15,epss(i))
-    Hssh           = pi*Planck(wlt(i),Tsh+273.15,epss(i))
+    Hcsu3          = pi*Planck(wl_a(i),Tcu+273.15,epsc(i));
+    %epsctest = epsc';
+    %Hcsu3_test          = pi*Planck(wl_a(i),Tcu+273.15, epsctest); 
+    %Hcsu3 = Sint( Hcsu3_test ,wl_a)
+    Hcsh           = pi*Planck(wl_a(i),Tch+273.15,epsc(i));
+    Hssu           = pi*Planck(wl_a(i),Tsu+273.15,epss(i));
+    Hssh           = pi*Planck(wl_a(i),Tsh+273.15,epss(i));
     % 1.2 radiance by leaf layers Hv and by soil Hs (modified by JAK 2015-01)
     if size(Hcsu3,2)>1
         v1 = repmat( 1/size(Hcsu3, 2), 1, size(Hcsu3, 2)); % vector for computing the mean
@@ -155,7 +143,7 @@ for i = 1:length(IT)
     Eplu_(:,i)      = Eplu;                        %               upwelling   diffuse radiance
     
     Eoutte_(i)      = Eplu(1);
-  
+    
     % 1.4 Directional radiation and brightness temperature
     K           = gap.K;
     vb          = rad.vb(end);
@@ -172,15 +160,50 @@ for i = 1:length(IT)
     
 end
 Lot_            = piLot_/pi;
+%% 2. total net fluxes
+% net radiation per component, in W m-2 (leaf or soil surface)
+
+if size(Hcsu3,2)>1
+    Rnuc = 0*Hcsu3;
+    %for j = 1:nl
+
+    for j = 1:size(Hcsu3,1)
+        for k = 1:size(Hcsu3,2)
+            Rnuc_           = epsc.*((Emin(1:end-1) + Eplu(2:end)) - 2*squeeze(Hcsu3(j,k,:)))';
+            Rnuc(j,k,:)     = 1E-3*Sint(Rnuc_,wl_a);
+        end
+    end
+        %Rnuc(:,:,j) = epsc*(Emin(j) + Eplu(j+1)) - 2*Hcsu3(:,:,j);    % sunlit leaf
+else
+    Rnuc_            = epsc.*((Emin(1:end-1) + Eplu(2:end)) - 2*(Hcsu))';
+    Rnuc            = 1E-3*Sint(Rnuc_,wl_a);
+end
+
+Rnhc_           = epsc.*((Emin(1:end-1) + Eplu(2:end)) - 2*(Hcsh))';
+Rnus_           = epss.*((Emin(nl+1) - Hssu))';                       % sunlit soil
+Rnhs_           = epss.*((Emin(nl+1) - Hssh))';                      % shaded soil
+
+Rnhc            = 1E-3*Sint(Rnhc_,wl_a);
+Rnus            = 1E-3*Sint(Rnus_,wl_a);
+Rnhs            = 1E-3*Sint(Rnhs_,wl_a);
+Eoutte          = 1E-3*Sint(Eoutte_,wl_a);
 
 %% 3. Write the output to the rad structure
 [rad.Lot_,rad.Eoutte_] = deal(zeros(length(spectral.wlS),1));
-rad.Lot_(IT)        = Lot_;
-rad.Eoutte_(IT)     = Eoutte_;    %               emitted     diffuse radiance at top
+rad.Lot_(wl_a)        = Lot_;
+rad.Eoutte_(wl_a)     = Eoutte_;    %               emitted     diffuse radiance at top
 rad.Eplut_          = Eplu_;
 rad.Emint_          = Emin_;
+rad.Rnuct           = Rnuc;
+rad.Rnhct           = Rnhc;
+rad.Rnust           = Rnus;
+rad.Rnhst           = Rnhs;
+rad.Eoutte          = Eoutte;
+
 return
 
 % 1) CvdT, 11 December 2015.
 % We subtract Emin(1), because ALL incident (thermal) radiation from Modtran
 % has been taken care of in RTMo. Not ideal but otherwise radiation budget will not close!
+
+
